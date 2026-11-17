@@ -4,23 +4,21 @@ Site statique pour évaluer subjectivement des images PAS virtuelles générées
 
 ## Contenu
 
-- 10 patches affichés pour chaque tissu : Kidney (KPMP), Breast et Lung.
-- Comparaison H&E input / Generated PAS — Model 1 / Generated PAS — Model 2.
-- Notes : Very High quality, High quality, Medium quality et Poor quality.
-- Résumés des notes par modèle et par tissu.
+- 10 patches affichés à la fois pour chaque tissu : Kidney (KPMP), Breast et Lung.
+- Comparaison H&E input / Generated PAS — Model 1 / Model 2.
+- Quatre niveaux de qualité et un résumé par modèle et par tissu.
 - Export CSV des notes.
-- Sauvegarde locale dans le navigateur via IndexedDB.
+- Images servies depuis le dépôt GitHub ; notes conservées localement dans le navigateur.
 
-## Mise en ligne sur GitHub Pages
+## Déployer avec GitHub Pages
 
-1. Place `index.html` et `README.md` à la racine du dépôt.
-2. Dans GitHub, ouvre **Settings → Pages**.
-3. Choisis **Deploy from a branch**, puis la branche `main` et le dossier `/(root)`.
-4. Clique sur **Save**. GitHub Pages affichera ensuite l’adresse du site dans cette même section.
+Les fichiers du site doivent rester à la racine du dépôt : `index.html`, `README.md` et le dossier `images/`.
 
-Aucune compilation ni dépendance externe n’est nécessaire.
+Dans **Settings → Pages**, choisis **Deploy from a branch**, la branche `main` et le dossier `/(root)`, puis enregistre.
 
-## Ajouter les images
+## Remplacer ou ajouter les images
 
-Ouvre le site et utilise **Add image** dans chaque case. Les formats acceptés sont PNG, JPEG et WebP (15 Mo maximum par image). Les images et les notes sont enregistrées dans le navigateur de l’utilisateur : elles ne sont pas intégrées au dépôt et ne sont pas partagées automatiquement entre plusieurs navigateurs ou ordinateurs. Exporte régulièrement les résultats CSV pour sauvegarder les notes.
+Les noms et chemins attendus sont indiqués dans `images/README.md`. Dans GitHub, ouvre `images/kidney/` et ajoute ou remplace les fichiers en gardant exactement leurs noms. Après le commit et le redéploiement Pages, les nouvelles images apparaîtront dans le site.
+
+Les notes restent propres au navigateur où elles ont été saisies. Exporte-les en CSV pour les conserver.
 

@@ -107,14 +107,6 @@
       object-fit: contain; object-position: center;
     }
     .placeholder { padding: 12px; color: #929b96; text-align: center; font-size: 12px; }
-    .upload {
-      display: inline-flex; align-items: center; gap: 5px;
-      margin-top: 8px; color: #26695e; font-size: 12px; font-weight: 700; cursor: pointer;
-    }
-    .upload input {
-      position: absolute; width: 1px; height: 1px; opacity: 0;
-      overflow: hidden; clip-path: inset(50%);
-    }
     .quality {
       display: grid; grid-template-columns: minmax(85px, 1fr) minmax(145px, 1.2fr);
       align-items: center; gap: 8px; margin-top: 10px; font-weight: 700;
@@ -151,7 +143,7 @@
     <section class="intro">
       <h1>HistoDomain — Subjective H&amp;E to PAS Evaluation</h1>
       <p>Cette plateforme permet d’évaluer la qualité des images PAS générées par le modèle de diffusion His-MMDM, entraîné sur les données du CHU de Nice, lorsqu’il est appliqué à des domaines externes. L’évaluation porte d’abord sur le tissu rénal de la base publique KPMP. Les tissus mammaire et pulmonaire peuvent être utilisés pour de futures expériences inter-tissus.</p>
-      <p>Pour chaque patch, compare l’image PAS générée à son entrée H&amp;E. Charge les images à évaluer dans les cases correspondantes. Tu peux attribuer une note distincte à chaque modèle ; les notes et les images restent enregistrées dans le navigateur de cet ordinateur.</p>
+      <p>Pour chaque patch, compare l’image PAS générée à son entrée H&amp;E. Les images sont chargées depuis le dossier images/ du dépôt GitHub ; pour les remplacer, change les fichiers correspondants dans ce dossier en conservant leurs noms. Les notes restent enregistrées localement dans le navigateur.</p>
       <p>Évalue à la fois la préservation de la morphologie (tubules, glomérules, membranes basales, noyaux) et le réalisme de la coloration PAS, notamment l’intensité et la distribution des zones positives. Une lame PAS de référence peut être ajoutée comme image de comparaison si nécessaire.</p>
       <div class="levels">Niveaux de qualité :
         <span class="very">Very High quality</span>,
@@ -194,7 +186,7 @@
       </div>
     </section>
 
-    <p class="instructions">Sélectionne la base et le tissu, charge les images patch par patch, puis choisis une qualité pour chaque image PAS générée. Chaque vue contient 10 patches.</p>
+    <p class="instructions">Sélectionne la base et le tissu, puis choisis une qualité pour chaque image PAS générée. Les images proviennent du dossier images/ du dépôt. Chaque vue contient 10 patches.</p>
     <div class="list-head"><h2 id="tissueTitle">Kidney — KPMP Public Database</h2><span class="muted" id="patchCount"></span></div>
     <section class="patches" id="patches" aria-live="polite"></section>
     <p class="footer">Après l’évaluation, exporte les résultats en CSV pour les conserver ou les partager.</p>
@@ -256,7 +248,6 @@
         const all = await getAllRecords();
         return all.find(item => item.id === recordId(tissue, patch)) || {
           id: recordId(tissue, patch), tissue, patch,
-          images: { he: "", model1: "", model2: "" },
           ratings: { model1: "", model2: "" }
         };
       }
@@ -272,14 +263,16 @@
           '<option value="1" ' + (value === 1 ? "selected" : "") + '>Poor quality</option>' +
           '</select></div>';
       }
-      function imagePanel(tissue, patch, field, title, image) {
-        const inputId = "upload-" + tissue + "-" + patch + "-" + field;
-        return '<div class="image-panel"><div class="image-label">' + title + '</div><div class="picture">' +
-          (image ? '<img loading="lazy" src="' + image + '" alt="' + title + ' patch ' + patch + '">' :
-          '<span class="placeholder">Aucune image chargée</span>') +
-          '</div><label class="upload" for="' + inputId + '">＋ ' + (image ? "Change image" : "Add image") +
-          '<input id="' + inputId + '" type="file" accept="image/png,image/jpeg,image/webp" data-image data-tissue="' +
-          tissue + '" data-patch="' + patch + '" data-field="' + field + '"></label></div>';
+      function imagePicture(tissue, patch, field, title) {
+        const filename = "patch_" + String(patch).padStart(2, "0") + "_" + field + ".png";
+        const source = "images/" + tissue + "/" + filename;
+        return '<div class="picture"><img loading="lazy" src="' + source + '" alt="' + title +
+          ' patch ' + patch + '" onerror="this.hidden=true;this.nextElementSibling.hidden=false">' +
+          '<span class="placeholder" hidden>Fichier à ajouter dans GitHub :<br><code>' + source + '</code></span></div>';
+      }
+      function imagePanel(tissue, patch, field, title) {
+        return '<div class="image-panel"><div class="image-label">' + title + '</div>' +
+          imagePicture(tissue, patch, field, title) + '</div>';
       }
       function renderPatchCard(tissue, patch, record) {
         const card = document.createElement("article");
@@ -288,16 +281,12 @@
           '<div class="patch-head"><span class="patch-title">Patch ' + patch + '</span><span class="muted">' +
           escapeHtml(tissues[tissue].name + " · " + tissues[tissue].dataset) + '</span></div>' +
           '<div class="patch-grid">' +
-          imagePanel(tissue, patch, "he", "HE input", record.images?.he) +
-          '<div class="image-panel"><div class="image-label">Generated PAS · Model 1</div><div class="picture">' +
-          (record.images?.model1 ? '<img loading="lazy" src="' + record.images.model1 + '" alt="Generated PAS model 1">' : '<span class="placeholder">Aucune image chargée</span>') +
-          '</div><label class="upload" for="upload-' + tissue + '-' + patch + '-model1">＋ ' + (record.images?.model1 ? "Change image" : "Add image") +
-          '<input id="upload-' + tissue + '-' + patch + '-model1" type="file" accept="image/png,image/jpeg,image/webp" data-image data-tissue="' + tissue + '" data-patch="' + patch + '" data-field="model1"></label>' +
+          imagePanel(tissue, patch, "he", "HE input") +
+          '<div class="image-panel"><div class="image-label">Generated PAS · Model 1</div>' +
+          imagePicture(tissue, patch, "pas_model1", "Generated PAS · Model 1") +
           qualitySelector(tissue, patch, "model1", record.ratings?.model1) + '</div>' +
-          '<div class="image-panel"><div class="image-label">Generated PAS · Model 2</div><div class="picture">' +
-          (record.images?.model2 ? '<img loading="lazy" src="' + record.images.model2 + '" alt="Generated PAS model 2">' : '<span class="placeholder">Aucune image chargée</span>') +
-          '</div><label class="upload" for="upload-' + tissue + '-' + patch + '-model2">＋ ' + (record.images?.model2 ? "Change image" : "Add image") +
-          '<input id="upload-' + tissue + '-' + patch + '-model2" type="file" accept="image/png,image/jpeg,image/webp" data-image data-tissue="' + tissue + '" data-patch="' + patch + '" data-field="model2"></label>' +
+          '<div class="image-panel"><div class="image-label">Generated PAS · Model 2</div>' +
+          imagePicture(tissue, patch, "pas_model2", "Generated PAS · Model 2") +
           qualitySelector(tissue, patch, "model2", record.ratings?.model2) + '</div></div>';
         return card;
       }
@@ -308,7 +297,7 @@
         container.replaceChildren();
         for (let patch = 1; patch <= PATCH_COUNT; patch++) {
           const record = byId.get(recordId(activeTissue, patch)) || {
-            images: { he: "", model1: "", model2: "" }, ratings: {}
+            ratings: {}
           };
           container.appendChild(renderPatchCard(activeTissue, patch, record));
         }
@@ -346,24 +335,6 @@
         });
       }
       function bindInputs() {
-        $$("#patches input[data-image]").forEach(input => input.addEventListener("change", async event => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          if (file.size > 15 * 1024 * 1024) {
-            alert("Choisis une image de moins de 15 Mo pour préserver l’espace de stockage du navigateur.");
-            event.target.value = "";
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = async () => {
-            const record = await patchRecord(input.dataset.tissue, Number(input.dataset.patch));
-            record.images ??= {};
-            record.images[input.dataset.field] = reader.result;
-            await saveRecord(record);
-            render();
-          };
-          reader.readAsDataURL(file);
-        }));
         $$("#patches select[data-rating]").forEach(select => select.addEventListener("change", async event => {
           const target = event.target;
           const record = await patchRecord(target.dataset.tissue, Number(target.dataset.patch));
@@ -373,36 +344,27 @@
           render();
         }));
       }
-      async function exportData(format) {
+      async function exportData() {
         const patches = await getAllRecords();
-        let content, mime, filename;
-        if (format === "json") {
-          content = JSON.stringify({ schema: "histodomain-subjective-evaluation-v1", exportedAt: new Date().toISOString(), patches }, null, 2);
-          mime = "application/json";
-          filename = "histodomain-evaluation.json";
-        } else {
-          const rows = [["dataset", "tissue", "patch", "image_type", "model", "quality_score", "quality_label"]];
-          Object.entries(tissues).forEach(([tissue, info]) => {
-            for (let patch = 1; patch <= PATCH_COUNT; patch++) {
-              const record = patches.find(item => item.id === recordId(tissue, patch));
-              ["model1", "model2"].forEach(model => {
-                const score = record?.ratings?.[model] || "";
-                rows.push([info.dataset, info.name, patch, "Generated PAS", model === "model1" ? "Model 1" : "Model 2", score, qualityLabels[score] || ""]);
-              });
-            }
-          });
-          content = rows.map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\r\n");
-          mime = "text/csv;charset=utf-8";
-          filename = "histodomain-evaluation.csv";
-        }
+        const rows = [["dataset", "tissue", "patch", "image_type", "model", "quality_score", "quality_label"]];
+        Object.entries(tissues).forEach(([tissue, info]) => {
+          for (let patch = 1; patch <= PATCH_COUNT; patch++) {
+            const record = patches.find(item => item.id === recordId(tissue, patch));
+            ["model1", "model2"].forEach(model => {
+              const score = record?.ratings?.[model] || "";
+              rows.push([info.dataset, info.name, patch, "Generated PAS", model === "model1" ? "Model 1" : "Model 2", score, qualityLabels[score] || ""]);
+            });
+          }
+        });
+        const content = rows.map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\r\n");
         const link = document.createElement("a");
-        link.href = URL.createObjectURL(new Blob([content], { type: mime }));
-        link.download = filename;
+        link.href = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
+        link.download = "histodomain-evaluation.csv";
         link.click();
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
       }
       async function resetRatings() {
-        if (!confirm("Effacer toutes les notes ? Les images chargées seront conservées.")) return;
+        if (!confirm("Effacer toutes les notes ?")) return;
         const records = await getAllRecords();
         for (const record of records) {
           record.ratings = { model1: "", model2: "" };
@@ -421,7 +383,7 @@
         $("#scaleToggle").setAttribute("aria-pressed", String(largeScale));
         $("#patches").classList.toggle("scale-mode", largeScale);
       });
-      $("#exportCsv").addEventListener("click", () => exportData("csv"));
+      $("#exportCsv").addEventListener("click", () => exportData());
       $("#reset").addEventListener("click", resetRatings);
       render().catch(() => {
         $("#patches").innerHTML = '<div class="empty">Le stockage local du navigateur n’est pas disponible. Essaie avec un navigateur récent.</div>';

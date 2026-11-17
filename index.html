@@ -89,6 +89,8 @@
     }
     .list-head h2 { margin: 0; }
     .patches { display: grid; gap: 12px; }
+    .pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; }
+    .pagination button:disabled { opacity: .45; cursor: not-allowed; }
     .patch-card { padding: 12px; }
     .patch-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
     .patch-title { font-size: 15px; font-weight: 700; }
@@ -143,7 +145,7 @@
     <section class="intro">
       <h1>HistoDomain — Subjective H&amp;E to PAS Evaluation</h1>
       <p>Cette plateforme permet d’évaluer la qualité des images PAS générées par le modèle de diffusion His-MMDM, entraîné sur les données du CHU de Nice, lorsqu’il est appliqué à des domaines externes. L’évaluation porte d’abord sur le tissu rénal de la base publique KPMP. Les tissus mammaire et pulmonaire peuvent être utilisés pour de futures expériences inter-tissus.</p>
-      <p>Pour chaque patch, compare l’image PAS générée à son entrée H&amp;E. Les images sont chargées depuis trois dossiers distincts du dépôt GitHub : images/HE, images/PAS_generated et images/PAS_finetuned. Remplace les PNG dans le sous-dossier du tissu concerné en conservant leurs noms. Les notes restent enregistrées localement dans le navigateur.</p>
+      <p>Pour chaque patch, compare l’image H&amp;E avec les sorties PAS correspondantes. La page repère automatiquement les fichiers H&amp;E nommés HE_image_*.processed.png et associe leur PAS nommée HE_image_*_sample_PAS.png dans les dossiers PAS_generated et PAS_finetuned. Ajoute les images dans le sous-dossier du tissu correspondant. Les notes restent enregistrées localement dans le navigateur.</p>
       <p>Évalue à la fois la préservation de la morphologie (tubules, glomérules, membranes basales, noyaux) et le réalisme de la coloration PAS, notamment l’intensité et la distribution des zones positives. Une lame PAS de référence peut être ajoutée comme image de comparaison si nécessaire.</p>
       <div class="levels">Niveaux de qualité :
         <span class="very">Very High quality</span>,
@@ -186,8 +188,9 @@
       </div>
     </section>
 
-    <p class="instructions">Sélectionne la base et le tissu, puis choisis une qualité pour chaque image PAS générée. Les images proviennent du dossier images/ du dépôt. Chaque vue contient 10 patches.</p>
+    <p class="instructions">Sélectionne la base et le tissu. Les images H&amp;E et PAS sont associées automatiquement à partir de leur nom de fichier. La page affiche 10 paires à la fois.</p>
     <div class="list-head"><h2 id="tissueTitle">Kidney — KPMP Public Database</h2><span class="muted" id="patchCount"></span></div>
+    <div class="pagination"><button id="previousPage" type="button">Previous</button><span id="pageIndicator" class="muted"></span><button id="nextPage" type="button">Next</button></div>
     <section class="patches" id="patches" aria-live="polite"></section>
     <p class="footer">Après l’évaluation, exporte les résultats en CSV pour les conserver ou les partager.</p>
   </main>
@@ -195,9 +198,11 @@
   <script>
     (() => {
       "use strict";
-      const PATCH_COUNT = 10;
+      const PAGE_SIZE = 10;
       const DB_NAME = "histodomain-subjective-evaluation";
       const STORE = "patches";
+      const REPOSITORY = "ImenChtourou/PAS_Subjective_Evaluation";
+      const BRANCH = "main";
       const tissues = {
         kidney: { name: "Kidney", dataset: "KPMP Public Database" },
         breast: { name: "Breast", dataset: "Other Public Dataset" },
@@ -205,29 +210,28 @@
       };
       const qualityLabels = { 4: "Very High quality", 3: "High quality", 2: "Medium quality", 1: "Poor quality" };
       let activeTissue = "kidney";
+      let currentPage = 0;
       let largeScale = false;
+      const pairCache = new Map();
 
       const $ = (selector, root = document) => root.querySelector(selector);
       const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
       const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, char => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[char]));
-      const recordId = (tissue, patch) => tissue + ":" + patch;
+      const recordId = (tissue, filename) => tissue + ":" + filename;
 
       function openDatabase() {
         return new Promise((resolve, reject) => {
           const request = indexedDB.open(DB_NAME, 1);
           request.onupgradeneeded = () => {
-            if (!request.result.objectStoreNames.contains(STORE)) {
-              request.result.createObjectStore(STORE, { keyPath: "id" });
-            }
+            if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE, { keyPath: "id" });
           };
           request.onsuccess = () => resolve(request.result);
           request.onerror = () => reject(request.error);
         });
       }
       const databasePromise = openDatabase();
-
       async function getAllRecords() {
         const db = await databasePromise;
         return new Promise((resolve, reject) => {
@@ -244,18 +248,45 @@
           request.onerror = () => reject(request.error);
         });
       }
-      async function patchRecord(tissue, patch) {
+      async function patchRecord(tissue, filename) {
         const all = await getAllRecords();
-        return all.find(item => item.id === recordId(tissue, patch)) || {
-          id: recordId(tissue, patch), tissue, patch,
-          ratings: { model1: "", model2: "" }
+        return all.find(item => item.id === recordId(tissue, filename)) || {
+          id: recordId(tissue, filename), tissue, filename, ratings: { model1: "", model2: "" }
         };
       }
-      function qualitySelector(tissue, patch, model, selected) {
+      async function listFolder(folder, tissue) {
+        const url = "https://api.github.com/repos/" + REPOSITORY + "/contents/images/" + folder + "/" + tissue + "?ref=" + BRANCH;
+        const response = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
+        if (response.status === 404) return [];
+        if (!response.ok) throw new Error("GitHub API " + response.status);
+        const items = await response.json();
+        return items.filter(item => item.type === "file").map(item => item.name);
+      }
+      async function loadPairs(tissue) {
+        if (pairCache.has(tissue)) return pairCache.get(tissue);
+        const promise = Promise.all([
+          listFolder("HE", tissue),
+          listFolder("PAS_generated", tissue),
+          listFolder("PAS_finetuned", tissue)
+        ]).then(([heFiles, generatedFiles, finetunedFiles]) => {
+          const generatedSet = new Set(generatedFiles);
+          const finetunedSet = new Set(finetunedFiles);
+          return heFiles.filter(name => /^HE_image_.+\.processed\.png$/i.test(name)).sort().map(he => {
+            const pas = he.replace(/\.processed\.png$/i, "_sample_PAS.png");
+            return { he, pasGenerated: generatedSet.has(pas) ? pas : "", pasFinetuned: finetunedSet.has(pas) ? pas : "" };
+          });
+        });
+        pairCache.set(tissue, promise);
+        try { return await promise; }
+        catch (error) { pairCache.delete(tissue); throw error; }
+      }
+      function qualitySelector(tissue, filename, model, selected) {
         const value = selected || "";
-        return '<div class="quality"><label for="quality-' + tissue + '-' + patch + '-' + model + '">Selected quality</label>' +
-          '<select id="quality-' + tissue + '-' + patch + '-' + model + '" data-rating data-tissue="' + tissue +
-          '" data-patch="' + patch + '" data-model="' + model + '" data-value="' + value + '">' +
+        const safeFilename = escapeHtml(filename);
+        const id = "quality-" + tissue + "-" + filename.replace(/[^a-zA-Z0-9_-]/g, "-") + "-" + model;
+        return '<div class="quality"><label for="' + id + '">Selected quality</label>' +
+          '<select id="' + id + '" data-rating data-tissue="' + tissue + '" data-filename="' + safeFilename +
+          '" data-model="' + model + '" data-value="' + value + '">' +
           '<option value="">Choose quality</option>' +
           '<option value="4" ' + (value === 4 ? "selected" : "") + '>Very High quality</option>' +
           '<option value="3" ' + (value === 3 ? "selected" : "") + '>High quality</option>' +
@@ -263,73 +294,51 @@
           '<option value="1" ' + (value === 1 ? "selected" : "") + '>Poor quality</option>' +
           '</select></div>';
       }
-      function imagePicture(tissue, patch, field, title) {
-        const filename = "patch_" + String(patch).padStart(2, "0") + ".png";
-        const source = "images/" + field + "/" + tissue + "/" + filename;
-        return '<div class="picture"><img loading="lazy" src="' + source + '" alt="' + title +
-          ' patch ' + patch + '" onerror="this.hidden=true;this.nextElementSibling.hidden=false">' +
-          '<span class="placeholder" hidden>Fichier à ajouter dans GitHub :<br><code>' + source + '</code></span></div>';
+      function imagePicture(tissue, folder, filename, title) {
+        const source = filename ? "images/" + folder + "/" + tissue + "/" + encodeURIComponent(filename) : "";
+        if (!filename) return '<div class="picture"><span class="placeholder">PAS correspondante introuvable.<br>Vérifie le nom du fichier et le dossier.</span></div>';
+        return '<div class="picture"><img loading="lazy" src="' + source + '" alt="' + escapeHtml(title) +
+          '" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="placeholder" hidden>Image introuvable :<br><code>' +
+          escapeHtml(source) + '</code></span></div>';
       }
-      function imagePanel(tissue, patch, field, title) {
-        return '<div class="image-panel"><div class="image-label">' + title + '</div>' +
-          imagePicture(tissue, patch, field, title) + '</div>';
-      }
-      function renderPatchCard(tissue, patch, record) {
+      function renderPatchCard(tissue, pair, displayNumber, record) {
         const card = document.createElement("article");
         card.className = "patch-card";
-        card.innerHTML =
-          '<div class="patch-head"><span class="patch-title">Patch ' + patch + '</span><span class="muted">' +
-          escapeHtml(tissues[tissue].name + " · " + tissues[tissue].dataset) + '</span></div>' +
-          '<div class="patch-grid">' +
-          imagePanel(tissue, patch, "HE", "HE input") +
+        card.innerHTML = '<div class="patch-head"><span class="patch-title">Patch ' + displayNumber + '</span><span class="muted">' +
+          escapeHtml(tissues[tissue].name + " · " + pair.he) + '</span></div><div class="patch-grid">' +
+          '<div class="image-panel"><div class="image-label">HE input · ' + escapeHtml(pair.he) + '</div>' +
+          imagePicture(tissue, "HE", pair.he, "HE input " + pair.he) + '</div>' +
           '<div class="image-panel"><div class="image-label">Generated PAS · His-MMDM</div>' +
-          imagePicture(tissue, patch, "PAS_generated", "Generated PAS · His-MMDM") +
-          qualitySelector(tissue, patch, "model1", record.ratings?.model1) + '</div>' +
+          imagePicture(tissue, "PAS_generated", pair.pasGenerated, "Generated PAS His-MMDM") +
+          qualitySelector(tissue, pair.he, "model1", record.ratings?.model1) + '</div>' +
           '<div class="image-panel"><div class="image-label">Generated PAS · His-MMDM fine-tuned</div>' +
-          imagePicture(tissue, patch, "PAS_finetuned", "Generated PAS · His-MMDM fine-tuned") +
-          qualitySelector(tissue, patch, "model2", record.ratings?.model2) + '</div></div>';
+          imagePicture(tissue, "PAS_finetuned", pair.pasFinetuned, "Generated PAS His-MMDM fine-tuned") +
+          qualitySelector(tissue, pair.he, "model2", record.ratings?.model2) + '</div></div>';
         return card;
       }
-      async function render() {
-        const all = await getAllRecords();
-        const byId = new Map(all.map(record => [record.id, record]));
-        const container = $("#patches");
-        container.replaceChildren();
-        for (let patch = 1; patch <= PATCH_COUNT; patch++) {
-          const record = byId.get(recordId(activeTissue, patch)) || {
-            ratings: {}
-          };
-          container.appendChild(renderPatchCard(activeTissue, patch, record));
-        }
-        $("#tissueTitle").textContent = tissues[activeTissue].name + " — " + tissues[activeTissue].dataset;
-        $("#patchCount").textContent = PATCH_COUNT + " patches · " + countRatings(all, activeTissue) + "/" + PATCH_COUNT + " patches scored";
-        bindInputs();
-        renderSummaries(all);
-      }
-      function countRatings(records, tissue) {
+      function countRatings(records, tissue, pairs) {
         const map = new Map(records.map(record => [record.id, record]));
-        let count = 0;
-        for (let patch = 1; patch <= PATCH_COUNT; patch++) {
-          const r = map.get(recordId(tissue, patch));
-          if (r && (r.ratings?.model1 || r.ratings?.model2)) count++;
-        }
-        return count;
+        return pairs.filter(pair => {
+          const r = map.get(recordId(tissue, pair.he));
+          return r && (r.ratings?.model1 || r.ratings?.model2);
+        }).length;
       }
-      function renderSummaries(records) {
+      function renderSummaries(records, allPairs) {
         const map = new Map(records.map(record => [record.id, record]));
         ["model1", "model2"].forEach(model => {
           const table = $("#summary" + (model === "model1" ? "1" : "2"));
           const rows = Object.entries(tissues).map(([tissue, info]) => {
             const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
             let completed = 0;
-            for (let patch = 1; patch <= PATCH_COUNT; patch++) {
-              const value = Number(map.get(recordId(tissue, patch))?.ratings?.[model]);
+            const pairs = allPairs[tissue] || [];
+            pairs.forEach(pair => {
+              const value = Number(map.get(recordId(tissue, pair.he))?.ratings?.[model]);
               if (value >= 1 && value <= 4) { counts[value]++; completed++; }
-            }
+            });
             return '<tr><td>' + escapeHtml(info.name + " · " + info.dataset) + '</td>' +
               '<td class="very">' + counts[4] + '</td><td class="high">' + counts[3] + '</td>' +
               '<td class="medium">' + counts[2] + '</td><td class="poor">' + counts[1] + '</td>' +
-              '<td><strong>' + completed + '/' + PATCH_COUNT + '</strong></td></tr>';
+              '<td><strong>' + completed + '/' + pairs.length + '</strong></td></tr>';
           }).join("");
           table.querySelector("tbody").innerHTML = rows;
         });
@@ -337,25 +346,51 @@
       function bindInputs() {
         $$("#patches select[data-rating]").forEach(select => select.addEventListener("change", async event => {
           const target = event.target;
-          const record = await patchRecord(target.dataset.tissue, Number(target.dataset.patch));
+          const filename = target.dataset.filename;
+          const record = await patchRecord(target.dataset.tissue, filename);
           record.ratings ??= {};
           record.ratings[target.dataset.model] = target.value ? Number(target.value) : "";
           await saveRecord(record);
           render();
         }));
       }
-      async function exportData() {
-        const patches = await getAllRecords();
-        const rows = [["dataset", "tissue", "patch", "image_type", "model", "quality_score", "quality_label"]];
-        Object.entries(tissues).forEach(([tissue, info]) => {
-          for (let patch = 1; patch <= PATCH_COUNT; patch++) {
-            const record = patches.find(item => item.id === recordId(tissue, patch));
-            ["model1", "model2"].forEach(model => {
-              const score = record?.ratings?.[model] || "";
-              rows.push([info.dataset, info.name, patch, "Generated PAS", model === "model1" ? "His-MMDM" : "His-MMDM fine-tuned", score, qualityLabels[score] || ""]);
-            });
-          }
+      async function render() {
+        const all = await getAllRecords();
+        const allPairs = {};
+        for (const tissue of Object.keys(tissues)) allPairs[tissue] = await loadPairs(tissue);
+        const pairs = allPairs[activeTissue];
+        const pageCount = Math.max(1, Math.ceil(pairs.length / PAGE_SIZE));
+        currentPage = Math.min(currentPage, pageCount - 1);
+        const start = currentPage * PAGE_SIZE;
+        const visiblePairs = pairs.slice(start, start + PAGE_SIZE);
+        const byId = new Map(all.map(record => [record.id, record]));
+        const container = $("#patches");
+        container.replaceChildren();
+        if (!pairs.length) container.innerHTML = '<div class="empty">Aucune image H&amp;E trouvée. Ajoute les images dans images/HE/' + activeTissue + '/.</div>';
+        visiblePairs.forEach((pair, index) => {
+          const record = byId.get(recordId(activeTissue, pair.he)) || { ratings: {} };
+          container.appendChild(renderPatchCard(activeTissue, pair, start + index + 1, record));
         });
+        $("#tissueTitle").textContent = tissues[activeTissue].name + " — " + tissues[activeTissue].dataset;
+        $("#patchCount").textContent = pairs.length + " paires · " + countRatings(all, activeTissue, pairs) + "/" + pairs.length + " évaluées";
+        $("#pageIndicator").textContent = "Page " + (currentPage + 1) + " / " + pageCount;
+        $("#previousPage").disabled = currentPage === 0;
+        $("#nextPage").disabled = currentPage >= pageCount - 1;
+        bindInputs();
+        renderSummaries(all, allPairs);
+      }
+      async function exportData() {
+        const records = await getAllRecords();
+        const map = new Map(records.map(record => [record.id, record]));
+        const rows = [["dataset", "tissue", "HE_filename", "PAS_generated_filename", "PAS_finetuned_filename", "model", "quality_score", "quality_label"]];
+        for (const [tissue, info] of Object.entries(tissues)) {
+          const pairs = await loadPairs(tissue);
+          pairs.forEach(pair => ["model1", "model2"].forEach(model => {
+            const score = map.get(recordId(tissue, pair.he))?.ratings?.[model] || "";
+            rows.push([info.dataset, info.name, pair.he, pair.pasGenerated, pair.pasFinetuned,
+              model === "model1" ? "His-MMDM" : "His-MMDM fine-tuned", score, qualityLabels[score] || ""]);
+          }));
+        }
         const content = rows.map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\r\n");
         const link = document.createElement("a");
         link.href = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
@@ -366,28 +401,32 @@
       async function resetRatings() {
         if (!confirm("Effacer toutes les notes ?")) return;
         const records = await getAllRecords();
-        for (const record of records) {
-          record.ratings = { model1: "", model2: "" };
-          await saveRecord(record);
-        }
+        for (const record of records) { record.ratings = { model1: "", model2: "" }; await saveRecord(record); }
         render();
       }
       $$(".tab[data-tissue]").forEach(button => button.addEventListener("click", () => {
         activeTissue = button.dataset.tissue;
+        currentPage = 0;
         $$(".tab[data-tissue]").forEach(tab => tab.classList.toggle("active", tab === button));
-        render();
+        render().catch(showLoadError);
       }));
+      $("#previousPage").addEventListener("click", () => { if (currentPage > 0) { currentPage--; render().catch(showLoadError); } });
+      $("#nextPage").addEventListener("click", async () => {
+        const pairs = await loadPairs(activeTissue);
+        if ((currentPage + 1) * PAGE_SIZE < pairs.length) { currentPage++; render().catch(showLoadError); }
+      });
+      function showLoadError() {
+        $("#patches").innerHTML = '<div class="empty">Impossible de récupérer la liste des images sur GitHub. Vérifie que le dépôt est public et réessaie dans quelques instants.</div>';
+      }
       $("#scaleToggle").addEventListener("click", () => {
         largeScale = !largeScale;
         $("#scaleToggle").classList.toggle("active", largeScale);
         $("#scaleToggle").setAttribute("aria-pressed", String(largeScale));
         $("#patches").classList.toggle("scale-mode", largeScale);
       });
-      $("#exportCsv").addEventListener("click", () => exportData());
+      $("#exportCsv").addEventListener("click", () => exportData().catch(showLoadError));
       $("#reset").addEventListener("click", resetRatings);
-      render().catch(() => {
-        $("#patches").innerHTML = '<div class="empty">Le stockage local du navigateur n’est pas disponible. Essaie avec un navigateur récent.</div>';
-      });
+      render().catch(showLoadError);
     })();
   </script>
 </body>

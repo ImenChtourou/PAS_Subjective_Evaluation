@@ -94,7 +94,7 @@
     .patch-card { padding: 12px; }
     .patch-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
     .patch-title { font-size: 15px; font-weight: 700; }
-    .patch-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .patch-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .image-panel {
       min-width: 0; padding: 9px; background: white;
       border: 1px solid #e4d9c8; border-radius: 8px;
@@ -145,8 +145,8 @@
     <section class="intro">
       <h1>HistoDomain — Subjective H&amp;E to PAS Evaluation</h1>
       <p>Cette plateforme permet d’évaluer la qualité des images PAS générées par le modèle de diffusion His-MMDM, entraîné sur les données du CHU de Nice, lorsqu’il est appliqué à des domaines externes. L’évaluation porte d’abord sur le tissu rénal de la base publique KPMP. Les tissus mammaire et pulmonaire peuvent être utilisés pour de futures expériences inter-tissus.</p>
-      <p>Pour chaque patch, compare l’image H&amp;E avec ses sorties PAS. </p>
-      <p>Évalue à la fois la préservation de la morphologie (tubules, glomérules, membranes basales, noyaux) et le réalisme de la coloration PAS, notamment l’intensité et la distribution des zones positives. </p>
+      <p>Pour chaque patch, compare l’image H&amp;E aux sorties PAS avec adapter et sans adapter. Les correspondances sont indiquées dans images/pairs.json. Les fichiers H&amp;E et PAS doivent être placés dans les dossiers du tissu correspondant et nommés comme indiqué dans ce fichier. L’ordre des trois sorties PAS varie selon le patch. Les notes restent enregistrées localement dans le navigateur.</p>
+      <p>Évalue à la fois la préservation de la morphologie (tubules, glomérules, membranes basales, noyaux) et le réalisme de la coloration PAS, notamment l’intensité et la distribution des zones positives. Une lame PAS de référence peut être ajoutée comme image de comparaison si nécessaire.</p>
       <div class="levels">Niveaux de qualité :
         <span class="very">Very High quality</span>,
         <span class="high">High quality</span>,
@@ -164,10 +164,12 @@
       </div>
     </section>
 
-    <h2>His-MMDM — PAS générée</h2>
+    <h2>Generated PAS with adapter</h2>
     <div class="table-wrap"><table id="summary1"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
-    <h2>His-MMDM fine-tuné — PAS générée</h2>
+    <h2>Generated PAS fine-tuned</h2>
     <div class="table-wrap"><table id="summary2"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
+    <h2>Generated PAS without adapter</h2>
+    <div class="table-wrap"><table id="summary3"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
 
     <section class="dataset-bar" aria-label="Sélection de la base de données et du tissu">
       <div class="dataset-group">
@@ -199,7 +201,7 @@
     (() => {
       "use strict";
       const PAGE_SIZE = 10;
-      const DB_NAME = "histodomain-subjective-evaluation";
+      const DB_NAME = "histodomain-pas-methods-v2";
       const STORE = "patches";
       const REPOSITORY = "ImenChtourou/PAS_Subjective_Evaluation";
       const BRANCH = "main";
@@ -213,6 +215,7 @@
       let currentPage = 0;
       let largeScale = false;
       let manifestPromise = null;
+      const displayOrder = new Map();
 
       const $ = (selector, root = document) => root.querySelector(selector);
       const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -251,7 +254,7 @@
       async function patchRecord(tissue, filename) {
         const all = await getAllRecords();
         return all.find(item => item.id === recordId(tissue, filename)) || {
-          id: recordId(tissue, filename), tissue, filename, ratings: { model1: "", model2: "" }
+          id: recordId(tissue, filename), tissue, filename, ratings: { withAdapter: "", fineTuned: "", withoutAdapter: "" }
         };
       }
       async function loadPairs(tissue) {
@@ -288,29 +291,61 @@
       function renderPatchCard(tissue, pair, displayNumber, record) {
         const card = document.createElement("article");
         card.className = "patch-card";
+        const key = recordId(tissue, pair.he);
+        if (!displayOrder.has(key)) {
+          const order = ["withAdapter", "fineTuned", "withoutAdapter"];
+          for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [order[i], order[j]] = [order[j], order[i]];
+          }
+          displayOrder.set(key, order);
+        }
+        const methods = {
+          withAdapter: {
+            label: "Generated PAS with adapter",
+            folder: "PAS_generated",
+            filename: pair.pasWithAdapter,
+            alt: "Generated PAS with adapter",
+            rating: record.ratings?.withAdapter
+          },
+          fineTuned: {
+            label: "Generated PAS · His-MMDM fine-tuned",
+            folder: "PAS_finetuned",
+            filename: pair.pasFinetuned,
+            alt: "Generated PAS His-MMDM fine-tuned",
+            rating: record.ratings?.fineTuned
+          },
+          withoutAdapter: {
+            label: "Generated PAS without adapter",
+            folder: "PAS_without_adapter",
+            filename: pair.pasWithoutAdapter,
+            alt: "Generated PAS without adapter",
+            rating: record.ratings?.withoutAdapter
+          }
+        };
+        const pasPanels = displayOrder.get(key).map(methodId => {
+          const method = methods[methodId];
+          return '<div class="image-panel"><div class="image-label">' + method.label + '</div>' +
+            imagePicture(tissue, method.folder, method.filename, method.alt) +
+            qualitySelector(tissue, pair.he, methodId, method.rating) + '</div>';
+        }).join("");
         card.innerHTML = '<div class="patch-head"><span class="patch-title">Patch ' + displayNumber + '</span><span class="muted">' +
           escapeHtml(tissues[tissue].name + " · " + pair.he) + '</span></div><div class="patch-grid">' +
           '<div class="image-panel"><div class="image-label">HE input · ' + escapeHtml(pair.he) + '</div>' +
-          imagePicture(tissue, "HE", pair.he, "HE input " + pair.he) + '</div>' +
-          '<div class="image-panel"><div class="image-label">Generated PAS · His-MMDM</div>' +
-          imagePicture(tissue, "PAS_generated", pair.pasGenerated, "Generated PAS His-MMDM") +
-          qualitySelector(tissue, pair.he, "model1", record.ratings?.model1) + '</div>' +
-          '<div class="image-panel"><div class="image-label">Generated PAS · His-MMDM fine-tuned</div>' +
-          imagePicture(tissue, "PAS_finetuned", pair.pasFinetuned, "Generated PAS His-MMDM fine-tuned") +
-          qualitySelector(tissue, pair.he, "model2", record.ratings?.model2) + '</div></div>';
+          imagePicture(tissue, "HE", pair.he, "HE input " + pair.he) + '</div>' + pasPanels + '</div>';
         return card;
       }
       function countRatings(records, tissue, pairs) {
         const map = new Map(records.map(record => [record.id, record]));
         return pairs.filter(pair => {
           const r = map.get(recordId(tissue, pair.he));
-          return r && (r.ratings?.model1 || r.ratings?.model2);
+          return r && (r.ratings?.withAdapter || r.ratings?.fineTuned || r.ratings?.withoutAdapter);
         }).length;
       }
       function renderSummaries(records, allPairs) {
         const map = new Map(records.map(record => [record.id, record]));
-        ["model1", "model2"].forEach(model => {
-          const table = $("#summary" + (model === "model1" ? "1" : "2"));
+        ["withAdapter", "fineTuned", "withoutAdapter"].forEach((model, index) => {
+          const table = $("#summary" + (index + 1));
           const rows = Object.entries(tissues).map(([tissue, info]) => {
             const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
             let completed = 0;
@@ -366,13 +401,13 @@
       async function exportData() {
         const records = await getAllRecords();
         const map = new Map(records.map(record => [record.id, record]));
-        const rows = [["dataset", "tissue", "HE_filename", "PAS_generated_filename", "PAS_finetuned_filename", "model", "quality_score", "quality_label"]];
+        const rows = [["dataset", "tissue", "HE_filename", "PAS_with_adapter_filename", "PAS_finetuned_filename", "PAS_without_adapter_filename", "method", "quality_score", "quality_label"]];
         for (const [tissue, info] of Object.entries(tissues)) {
           const pairs = await loadPairs(tissue);
-          pairs.forEach(pair => ["model1", "model2"].forEach(model => {
+          pairs.forEach(pair => ["withAdapter", "fineTuned", "withoutAdapter"].forEach(model => {
             const score = map.get(recordId(tissue, pair.he))?.ratings?.[model] || "";
-            rows.push([info.dataset, info.name, pair.he, pair.pasGenerated, pair.pasFinetuned,
-              model === "model1" ? "His-MMDM" : "His-MMDM fine-tuned", score, qualityLabels[score] || ""]);
+            rows.push([info.dataset, info.name, pair.he, pair.pasWithAdapter, pair.pasFinetuned, pair.pasWithoutAdapter,
+              model === "withAdapter" ? "Generated PAS with adapter" : model === "fineTuned" ? "Generated PAS · His-MMDM fine-tuned" : "Generated PAS without adapter", score, qualityLabels[score] || ""]);
           }));
         }
         const content = rows.map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\r\n");
@@ -385,7 +420,7 @@
       async function resetRatings() {
         if (!confirm("Effacer toutes les notes ?")) return;
         const records = await getAllRecords();
-        for (const record of records) { record.ratings = { model1: "", model2: "" }; await saveRecord(record); }
+        for (const record of records) { record.ratings = { withAdapter: "", fineTuned: "", withoutAdapter: "" }; await saveRecord(record); }
         render();
       }
       $$(".tab[data-tissue]").forEach(button => button.addEventListener("click", () => {
@@ -400,7 +435,7 @@
         if ((currentPage + 1) * PAGE_SIZE < pairs.length) { currentPage++; render().catch(showLoadError); }
       });
       function showLoadError() {
-        $("#patches").innerHTML = '<div class="empty">Impossible de récupérer la liste des images sur GitHub. Vérifie que le dépôt est public et réessaie dans quelques instants.</div>';
+        $("#patches").innerHTML = '<div class="empty">Impossible de charger images/pairs.json. Vérifie que le fichier est présent à la racine du dépôt publié par GitHub Pages.</div>';
       }
       $("#scaleToggle").addEventListener("click", () => {
         largeScale = !largeScale;

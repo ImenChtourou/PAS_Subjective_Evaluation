@@ -2,53 +2,63 @@
   "kidney": [
     {
       "he": "HE_image_x100608_y30720.processed.png",
-      "pasGenerated": "HE_image_x100608_y30720__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x100608_y30720__sample_PAS.png",
+      "pasFinetuned": "HE_image_x100608_y30720__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x100608_y30720__sample_PAS.png"
     },
     {
       "he": "HE_image_x100608_y31488.processed.png",
-      "pasGenerated": "HE_image_x100608_y31488__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x100608_y31488__sample_PAS.png",
+      "pasFinetuned": "HE_image_x100608_y31488__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x100608_y31488__sample_PAS.png"
     },
     {
       "he": "HE_image_x100608_y32256.processed.png",
-      "pasGenerated": "HE_image_x100608_y32256__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x100608_y32256__sample_PAS.png",
+      "pasFinetuned": "HE_image_x100608_y32256__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x100608_y32256__sample_PAS.png"
     },
     {
       "he": "HE_image_x101376_y31488.processed.png",
-      "pasGenerated": "HE_image_x101376_y31488__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x101376_y31488__sample_PAS.png",
+      "pasFinetuned": "HE_image_x101376_y31488__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x101376_y31488__sample_PAS.png"
     },
     {
       "he": "HE_image_x101376_y32256.processed.png",
-      "pasGenerated": "HE_image_x101376_y32256__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x101376_y32256__sample_PAS.png",
+      "pasFinetuned": "HE_image_x101376_y32256__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x101376_y32256__sample_PAS.png"
     },
     {
       "he": "HE_image_x102144_y30720.processed.png",
-      "pasGenerated": "HE_image_x102144_y30720__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x102144_y30720__sample_PAS.png",
+      "pasFinetuned": "HE_image_x102144_y30720__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x102144_y30720__sample_PAS.png"
     },
     {
       "he": "HE_image_x102144_y32256.processed.png",
-      "pasGenerated": "HE_image_x102144_y32256__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x102144_y32256__sample_PAS.png",
+      "pasFinetuned": "HE_image_x102144_y32256__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x102144_y32256__sample_PAS.png"
     },
     {
       "he": "HE_image_x102912_y31488.processed.png",
-      "pasGenerated": "HE_image_x102912_y31488__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x102912_y31488__sample_PAS.png",
+      "pasFinetuned": "HE_image_x102912_y31488__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x102912_y31488__sample_PAS.png"
     },
     {
       "he": "HE_image_x102912_y32256.processed.png",
-      "pasGenerated": "HE_image_x102912_y32256__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x102912_y32256__sample_PAS.png",
+      "pasFinetuned": "HE_image_x102912_y32256__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x102912_y32256__sample_PAS.png"
     },
     {
       "he": "HE_image_x103680_y32256.processed.png",
-      "pasGenerated": "HE_image_x103680_y32256__sample_PAS.png",
-      "pasFinetuned": ""
+      "pasWithAdapter": "HE_image_x103680_y32256__sample_PAS.png",
+      "pasFinetuned": "HE_image_x103680_y32256__sample_PAS.png",
+      "pasWithoutAdapter": "HE_image_x103680_y32256__sample_PAS.png"
     }
   ],
   "breast": [],

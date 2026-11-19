@@ -325,7 +325,7 @@
         };
         const pasPanels = displayOrder.get(key).map(methodId => {
           const method = methods[methodId];
-          return '<div class="image-panel"><div class="image-label">' + method.label + '</div>' +
+          return '<div class="image-panel">' +
             imagePicture(tissue, method.folder, method.filename, method.alt) +
             qualitySelector(tissue, pair.he, methodId, method.rating) + '</div>';
         }).join("");

@@ -329,10 +329,8 @@
             imagePicture(tissue, method.folder, method.filename, method.alt) +
             qualitySelector(tissue, pair.he, methodId, method.rating) + '</div>';
         }).join("");
-        card.innerHTML = '<div class="patch-head"><span class="patch-title">Patch ' + displayNumber + '</span><span class="muted">' +
-          escapeHtml(tissues[tissue].name) + '</span></div><div class="patch-grid">' +
-          '<div class="image-panel"><div class="image-label">HE input</div>' +
-          imagePicture(tissue, "HE", pair.he, "HE input " + pair.he) + '</div>' + pasPanels + '</div>';
+        card.innerHTML ='<div class="patch-head"><span class="patch-title">Patch ' + displayNumber +' : HE input</span></div><div class="patch-grid">' +
+        '<div class="image-panel">' + imagePicture(tissue, "HE", pair.he, "HE input " + pair.he) + '</div>' + pasPanels + '</div>';
         return card;
       }
       function countRatings(records, tissue, pairs) {

@@ -94,7 +94,7 @@
     .patch-card { padding: 12px; }
     .patch-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
     .patch-title { font-size: 15px; font-weight: 700; }
-    .patch-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .patch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .image-panel {
       min-width: 0; padding: 9px; background: white;
       border: 1px solid #e4d9c8; border-radius: 8px;
@@ -145,7 +145,7 @@
     <section class="intro">
       <h1>HistoDomain — Subjective H&amp;E to PAS Evaluation</h1>
       <p>Cette plateforme permet d’évaluer la qualité des images PAS générées par le modèle de diffusion His-MMDM, entraîné sur les données du CHU de Nice, lorsqu’il est appliqué à des domaines externes. L’évaluation porte d’abord sur le tissu rénal de la base publique KPMP. Les tissus mammaire et pulmonaire peuvent être utilisés pour de futures expériences inter-tissus.</p>
-      <p>Pour chaque patch, compare l’image H&amp;E aux sorties PAS avec adapter et sans adapter. Les correspondances sont indiquées dans images/pairs.json. Les fichiers H&amp;E et PAS doivent être placés dans les dossiers du tissu correspondant et nommés comme indiqué dans ce fichier. L’ordre des trois sorties PAS varie selon le patch. Les notes restent enregistrées localement dans le navigateur.</p>
+      <p>Chaque patch H&amp;E est présenté trois fois, une fois avec chacune des méthodes PAS. L’ordre des 30 présentations est mélangé et le nom de la méthode reste masqué. Les correspondances sont indiquées dans images/pairs.json. L’ordre et les notes restent enregistrés localement dans ce navigateur.</p>
       <p>Évalue à la fois la préservation de la morphologie (tubules, glomérules, membranes basales, noyaux) et le réalisme de la coloration PAS, notamment l’intensité et la distribution des zones positives. Une lame PAS de référence peut être ajoutée comme image de comparaison si nécessaire.</p>
       <div class="levels">Niveaux de qualité :
         <span class="very">Very High quality</span>,
@@ -190,7 +190,7 @@
       </div>
     </section>
 
-    <p class="instructions">Sélectionne la base et le tissu. Les images H&amp;E et PAS sont associées automatiquement à partir de leur nom de fichier. La page affiche 10 paires à la fois.</p>
+    <p class="instructions">Sélectionne la base et le tissu. Chaque patch H&amp;E est associé aux trois sorties PAS ; les 30 présentations sont affichées sur cette page dans un ordre aléatoire.</p>
     <div class="list-head"><h2 id="tissueTitle">Kidney — KPMP Public Database</h2><span class="muted" id="patchCount"></span></div>
     <div class="pagination"><button id="previousPage" type="button">Previous</button><span id="pageIndicator" class="muted"></span><button id="nextPage" type="button">Next</button></div>
     <section class="patches" id="patches" aria-live="polite"></section>
@@ -200,7 +200,7 @@
   <script>
     (() => {
       "use strict";
-      const PAGE_SIZE = 10;
+      const PAGE_SIZE = 30;
       const DB_NAME = "histodomain-pas-methods-v2";
       const STORE = "patches";
       const REPOSITORY = "ImenChtourou/PAS_Subjective_Evaluation";
@@ -215,7 +215,8 @@
       let currentPage = 0;
       let largeScale = false;
       let manifestPromise = null;
-      const displayOrder = new Map();
+      const PAS_METHODS = ["withAdapter", "fineTuned", "withoutAdapter"];
+      const trialOrders = new Map();
 
       const $ = (selector, root = document) => root.querySelector(selector);
       const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -267,6 +268,24 @@
         const manifest = await manifestPromise;
         return Array.isArray(manifest[tissue]) ? manifest[tissue] : [];
       }
+      function ensureTrialOrder(tissue, pairs) {
+        const storageKey = "histodomain-trial-order-v1:" + tissue;
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (_) { saved = []; }
+        const expected = new Set(pairs.flatMap(pair => PAS_METHODS.map(method => pair.he + "|" + method)));
+        const savedKeys = Array.isArray(saved) ? saved.map(trial => trial.he + "|" + trial.method) : [];
+        const valid = savedKeys.length === expected.size && new Set(savedKeys).size === expected.size &&
+          savedKeys.every(key => expected.has(key));
+        if (!valid) {
+          saved = pairs.flatMap(pair => PAS_METHODS.map(method => ({ he: pair.he, method })));
+          for (let i = saved.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [saved[i], saved[j]] = [saved[j], saved[i]];
+          }
+          try { localStorage.setItem(storageKey, JSON.stringify(saved)); } catch (_) {}
+        }
+        trialOrders.set(tissue, saved);
+      }
       function qualitySelector(tissue, filename, model, selected) {
         const value = selected || "";
         const safeFilename = escapeHtml(filename);
@@ -288,58 +307,48 @@
           '" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="placeholder" hidden>Image introuvable :<br><code>' +
           escapeHtml(source) + '</code></span></div>';
       }
-      function renderPatchCard(tissue, pair, displayNumber, record) {
+      function renderPatchCard(tissue, pair, methodId, displayNumber, record) {
         const card = document.createElement("article");
         card.className = "patch-card";
         const key = recordId(tissue, pair.he);
-        if (!displayOrder.has(key)) {
-          const order = ["withAdapter", "fineTuned", "withoutAdapter"];
-          for (let i = order.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [order[i], order[j]] = [order[j], order[i]];
-          }
-          displayOrder.set(key, order);
-        }
         const methods = {
           withAdapter: {
             label: "Generated PAS with adapter",
             folder: "PAS_generated",
             filename: pair.pasWithAdapter,
-            alt: "Generated PAS with adapter",
+            alt: "Generated PAS",
             rating: record.ratings?.withAdapter
           },
           fineTuned: {
             label: "Generated PAS · His-MMDM fine-tuned",
             folder: "PAS_finetuned",
             filename: pair.pasFinetuned,
-            alt: "Generated PAS His-MMDM fine-tuned",
+            alt: "Generated PAS",
             rating: record.ratings?.fineTuned
           },
           withoutAdapter: {
             label: "Generated PAS without adapter",
             folder: "PAS_without_adapter",
             filename: pair.pasWithoutAdapter,
-            alt: "Generated PAS without adapter",
+            alt: "Generated PAS",
             rating: record.ratings?.withoutAdapter
           }
         };
-        const pasPanels = displayOrder.get(key).map(methodId => {
-          const method = methods[methodId];
-          return '<div class="image-panel">' +
-            imagePicture(tissue, method.folder, method.filename, method.alt) +
-            qualitySelector(tissue, pair.he, methodId, method.rating) + '</div>';
-        }).join("");
+        const method = methods[methodId];
+        const pasPanel = '<div class="image-panel"><div class="image-label">Generated PAS</div>' +
+          imagePicture(tissue, method.folder, method.filename, method.alt) +
+          qualitySelector(tissue, pair.he, methodId, method.rating) + '</div>';
         card.innerHTML = '<div class="patch-head"><span class="patch-title">Patch ' + displayNumber + ' : HE input</span></div><div class="patch-grid">' +
-          '<div class="image-panel">' +
-          imagePicture(tissue, "HE", pair.he, "HE input " + pair.he) + '</div>' + pasPanels + '</div>';
+          '<div class="image-panel"><div class="image-label">HE input</div>' +
+          imagePicture(tissue, "HE", pair.he, "HE input") + '</div>' + pasPanel + '</div>';
         return card;
       }
       function countRatings(records, tissue, pairs) {
         const map = new Map(records.map(record => [record.id, record]));
-        return pairs.filter(pair => {
+        return pairs.reduce((total, pair) => {
           const r = map.get(recordId(tissue, pair.he));
-          return r && (r.ratings?.withAdapter || r.ratings?.fineTuned || r.ratings?.withoutAdapter);
-        }).length;
+          return total + PAS_METHODS.filter(method => r?.ratings?.[method] !== undefined && r.ratings[method] !== "").length;
+        }, 0);
       }
       function renderSummaries(records, allPairs) {
         const map = new Map(records.map(record => [record.id, record]));
@@ -376,21 +385,26 @@
         const all = await getAllRecords();
         const allPairs = {};
         for (const tissue of Object.keys(tissues)) allPairs[tissue] = await loadPairs(tissue);
+        for (const tissue of Object.keys(tissues)) ensureTrialOrder(tissue, allPairs[tissue]);
         const pairs = allPairs[activeTissue];
-        const pageCount = Math.max(1, Math.ceil(pairs.length / PAGE_SIZE));
+        const pairByName = new Map(pairs.map(pair => [pair.he, pair]));
+        const trials = trialOrders.get(activeTissue) || [];
+        const pageCount = Math.max(1, Math.ceil(trials.length / PAGE_SIZE));
         currentPage = Math.min(currentPage, pageCount - 1);
         const start = currentPage * PAGE_SIZE;
-        const visiblePairs = pairs.slice(start, start + PAGE_SIZE);
+        const visibleTrials = trials.slice(start, start + PAGE_SIZE);
         const byId = new Map(all.map(record => [record.id, record]));
         const container = $("#patches");
         container.replaceChildren();
         if (!pairs.length) container.innerHTML = '<div class="empty">Aucune image H&amp;E trouvée. Ajoute les images dans images/HE/' + activeTissue + '/.</div>';
-        visiblePairs.forEach((pair, index) => {
+        visibleTrials.forEach((trial, index) => {
+          const pair = pairByName.get(trial.he);
+          if (!pair) return;
           const record = byId.get(recordId(activeTissue, pair.he)) || { ratings: {} };
-          container.appendChild(renderPatchCard(activeTissue, pair, start + index + 1, record));
+          container.appendChild(renderPatchCard(activeTissue, pair, trial.method, start + index + 1, record));
         });
         $("#tissueTitle").textContent = tissues[activeTissue].name + " — " + tissues[activeTissue].dataset;
-        $("#patchCount").textContent = pairs.length + " paires · " + countRatings(all, activeTissue, pairs) + "/" + pairs.length + " évaluées";
+        $("#patchCount").textContent = trials.length + " présentations · " + countRatings(all, activeTissue, pairs) + "/" + trials.length + " évaluées";
         $("#pageIndicator").textContent = "Page " + (currentPage + 1) + " / " + pageCount;
         $("#previousPage").disabled = currentPage === 0;
         $("#nextPage").disabled = currentPage >= pageCount - 1;
@@ -431,7 +445,7 @@
       $("#previousPage").addEventListener("click", () => { if (currentPage > 0) { currentPage--; render().catch(showLoadError); } });
       $("#nextPage").addEventListener("click", async () => {
         const pairs = await loadPairs(activeTissue);
-        if ((currentPage + 1) * PAGE_SIZE < pairs.length) { currentPage++; render().catch(showLoadError); }
+        if ((currentPage + 1) * PAGE_SIZE < pairs.length * PAS_METHODS.length) { currentPage++; render().catch(showLoadError); }
       });
       function showLoadError() {
         $("#patches").innerHTML = '<div class="empty">Impossible de charger images/pairs.json. Vérifie que le fichier est présent à la racine du dépôt publié par GitHub Pages.</div>';

@@ -458,7 +458,10 @@
           const pair = pairByName.get(trial.he);
           if (!pair) return;
           const record = byId.get(recordId(activeTissue, pair.he)) || { ratings: {} };
-          container.appendChild(renderPatchCard(activeTissue, pair, trial.method, record, subjectNumberByHE.get(pair.he)));
+          const displayNumber = activeTissue === "kidney_patient"
+            ? subjectNumberByHE.get(pair.he)
+            : start + index + 1;
+          container.appendChild(renderPatchCard(activeTissue, pair, trial.method, record, displayNumber));
         });
         $("#tissueTitle").textContent = tissues[activeTissue].name + " — " + tissues[activeTissue].dataset;
         $("#patchCount").textContent = trials.length + " présentations · " + countRatings(all, activeTissue, pairs) + "/" + trials.length + " évaluées";

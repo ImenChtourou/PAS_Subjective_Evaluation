@@ -335,7 +335,8 @@
           '</select></div>';
       }
       function imagePicture(tissue, folder, filename, title) {
-        const source = filename ? "images/" + folder + "/" + tissue + "/" + encodeURIComponent(filename) : "";
+        const tissueFolder = tissue === "kidney_patient" ? "Kidney_Patient" : tissue;
+        const source = filename ? "images/" + folder + "/" + tissueFolder + "/" + encodeURIComponent(filename) : "";
         if (!filename) return '<div class="picture"><span class="placeholder">PAS correspondante introuvable.<br>Vérifie le nom du fichier et le dossier.</span></div>';
         return '<div class="picture"><img loading="lazy" src="' + source + '" alt="' + escapeHtml(title) +
           '" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="placeholder" hidden>Image introuvable :<br><code>' +
@@ -442,7 +443,10 @@
         const byId = new Map(all.map(record => [record.id, record]));
         const container = $("#patches");
         container.replaceChildren();
-        if (!pairs.length) container.innerHTML = '<div class="empty">Aucune image H&amp;E trouvée. Ajoute les images dans images/HE/' + activeTissue + '/.</div>';
+        if (!pairs.length) {
+          const heFolder = activeTissue === "kidney_patient" ? "Kidney_Patient" : activeTissue;
+          container.innerHTML = '<div class="empty">Aucune image H&amp;E trouvée. Ajoute les images dans images/HE/' + heFolder + '/.</div>';
+        }
         visibleTrials.forEach((trial, index) => {
           const pair = pairByName.get(trial.he);
           if (!pair) return;

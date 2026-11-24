@@ -145,7 +145,7 @@
     <section class="intro">
       <h1>HistoDomain — Subjective H&amp;E to PAS Evaluation</h1>
       <p>Cette plateforme permet d’évaluer la qualité des images PAS générées par le modèle de diffusion His-MMDM, entraîné sur les données du CHU de Nice, lorsqu’il est appliqué à des domaines externes. L’évaluation porte d’abord sur le tissu rénal de la base publique KPMP. Les tissus mammaire et pulmonaire peuvent être utilisés pour de futures expériences inter-tissus.</p>
-      <p>Chaque patch H&amp;E est présenté trois fois, une fois avec chacune des méthodes PAS. L’ordre des 30 présentations est mélangé et le nom de la méthode reste masqué. Les correspondances sont indiquées dans images/pairs.json. L’ordre et les notes restent enregistrés localement dans ce navigateur.</p>
+      <p>Au niveau WSI, chaque patch H&amp;E est présenté trois fois, une fois avec chacune des méthodes PAS. Au niveau patient, chaque patient est présenté une seule fois avec une seule sortie PAS. L’ordre reste aléatoire et les notes sont enregistrées localement dans ce navigateur.</p>
       <p>Évalue à la fois la préservation de la morphologie (tubules, glomérules, membranes basales, noyaux) et le réalisme de la coloration PAS, notamment l’intensité et la distribution des zones positives. Une lame PAS de référence peut être ajoutée comme image de comparaison si nécessaire.</p>
       <div class="levels">Niveaux de qualité :
         <span class="very">Very High quality</span>,
@@ -159,7 +159,7 @@
       <div class="level very">Very High quality : coloration très réaliste et morphologie très bien préservée.</div>
       <p class="muted">Les réponses sont sauvegardées localement dans ce navigateur. Elles ne sont pas envoyées sur un serveur.</p>
       <div class="toolbar">
-        <button id="exportCsv" type="button">Export CSV</button>
+        <button id="exportCsv" type="button">Export Excel (all views)</button>
                 <button class="danger" id="reset" type="button">Reset responses</button>
       </div>
     </section>
@@ -170,12 +170,15 @@
     <div class="table-wrap"><table id="summary2"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
     <h2>Generated PAS without adapter</h2>
     <div class="table-wrap"><table id="summary3"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
+    <h2>Generated PAS — Patient level (single version)</h2>
+    <div class="table-wrap"><table id="summary4"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
 
     <section class="dataset-bar" aria-label="Sélection de la base de données et du tissu">
       <div class="dataset-group">
         <div class="dataset-name">KPMP Public Database</div>
         <div class="tabs">
-          <button class="tab active" type="button" data-tissue="kidney">Kidney</button>
+          <button class="tab active" type="button" data-tissue="kidney">Kidney WSI level</button>
+          <button class="tab" type="button" data-tissue="kidney_patient">Kidney Patient level</button>
           <button class="tab" type="button" id="scaleToggle" aria-pressed="false">Large scale</button>
         </div>
         <div class="dataset-note">Domaine rénal externe · évaluation H&amp;E seule possible</div>
@@ -190,13 +193,14 @@
       </div>
     </section>
 
-    <p class="instructions">Sélectionne la base et le tissu. Chaque patch H&amp;E est associé aux trois sorties PAS ; les 30 présentations sont affichées sur cette page dans un ordre aléatoire.</p>
-    <div class="list-head"><h2 id="tissueTitle">Kidney — KPMP Public Database</h2><span class="muted" id="patchCount"></span></div>
+    <p class="instructions" id="viewInstructions">Sélectionne la base et le tissu.</p>
+    <div class="list-head"><h2 id="tissueTitle">Kidney WSI level — KPMP Public Database</h2><span class="muted" id="patchCount"></span></div>
     <div class="pagination"><button id="previousPage" type="button">Previous</button><span id="pageIndicator" class="muted"></span><button id="nextPage" type="button">Next</button></div>
     <section class="patches" id="patches" aria-live="polite"></section>
-    <p class="footer">Après l’évaluation, exporte les résultats en CSV pour les conserver ou les partager.</p>
+    <p class="footer">Après l’évaluation, exporte les deux vues dans un même classeur Excel.</p>
   </main>
 
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script>
     (() => {
       "use strict";
@@ -206,7 +210,8 @@
       const REPOSITORY = "ImenChtourou/PAS_Subjective_Evaluation";
       const BRANCH = "main";
       const tissues = {
-        kidney: { name: "Kidney", dataset: "KPMP Public Database" },
+        kidney: { name: "Kidney WSI level", dataset: "KPMP Public Database" },
+        kidney_patient: { name: "Kidney Patient level", dataset: "KPMP Public Database" },
         breast: { name: "Breast", dataset: "Other Public Dataset" },
         lung: { name: "Lung", dataset: "Other Public Dataset" }
       };
@@ -217,6 +222,7 @@
       let manifestPromise = null;
       const PAS_METHODS = ["withAdapter", "fineTuned", "withoutAdapter"];
       const trialOrders = new Map();
+      const methodsForTissue = tissue => tissue === "kidney_patient" ? ["patientPAS"] : PAS_METHODS;
 
       const $ = (selector, root = document) => root.querySelector(selector);
       const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -255,7 +261,7 @@
       async function patchRecord(tissue, filename) {
         const all = await getAllRecords();
         return all.find(item => item.id === recordId(tissue, filename)) || {
-          id: recordId(tissue, filename), tissue, filename, ratings: { withAdapter: "", fineTuned: "", withoutAdapter: "" }
+          id: recordId(tissue, filename), tissue, filename, ratings: { withAdapter: "", fineTuned: "", withoutAdapter: "", patientPAS: "" }
         };
       }
       async function loadPairs(tissue) {
@@ -269,18 +275,46 @@
         return Array.isArray(manifest[tissue]) ? manifest[tissue] : [];
       }
       function ensureTrialOrder(tissue, pairs) {
-        const storageKey = "histodomain-trial-order-v1:" + tissue;
+        const storageKey = "histodomain-trial-order-v3:" + tissue;
+        const tissueMethods = methodsForTissue(tissue);
         let saved = {};
         try { saved = JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (_) { saved = []; }
-        const expected = new Set(pairs.flatMap(pair => PAS_METHODS.map(method => pair.he + "|" + method)));
+        const expected = new Set(pairs.flatMap(pair => tissueMethods.map(method => pair.he + "|" + method)));
         const savedKeys = Array.isArray(saved) ? saved.map(trial => trial.he + "|" + trial.method) : [];
         const valid = savedKeys.length === expected.size && new Set(savedKeys).size === expected.size &&
           savedKeys.every(key => expected.has(key));
         if (!valid) {
-          saved = pairs.flatMap(pair => PAS_METHODS.map(method => ({ he: pair.he, method })));
-          for (let i = saved.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [saved[i], saved[j]] = [saved[j], saved[i]];
+          const trials = pairs.flatMap(pair => tissueMethods.map(method => ({ he: pair.he, method })));
+          let shuffled = false;
+          for (let attempt = 0; attempt < 10000 && !shuffled; attempt++) {
+            const candidate = [...trials];
+            for (let i = candidate.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [candidate[i], candidate[j]] = [candidate[j], candidate[i]];
+            }
+            if (candidate.every((trial, index) => index === 0 || trial.he !== candidate[index - 1].he)) {
+              saved = candidate;
+              shuffled = true;
+            }
+          }
+          if (!shuffled) {
+            const remaining = new Map(pairs.map(pair => {
+              const methods = [...tissueMethods];
+              for (let i = methods.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [methods[i], methods[j]] = [methods[j], methods[i]];
+              }
+              return [pair.he, methods];
+            }));
+            let previousHE = "";
+            saved = [];
+            while (remaining.size) {
+              const choices = [...remaining.keys()].filter(he => he !== previousHE);
+              const he = choices[Math.floor(Math.random() * choices.length)];
+              saved.push({ he, method: remaining.get(he).pop() });
+              previousHE = he;
+              if (!remaining.get(he).length) remaining.delete(he);
+            }
           }
           try { localStorage.setItem(storageKey, JSON.stringify(saved)); } catch (_) {}
         }
@@ -307,10 +341,11 @@
           '" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="placeholder" hidden>Image introuvable :<br><code>' +
           escapeHtml(source) + '</code></span></div>';
       }
-      function renderPatchCard(tissue, pair, methodId, displayNumber, record) {
+      function renderPatchCard(tissue, pair, methodId, record, subjectNumber) {
         const card = document.createElement("article");
         card.className = "patch-card";
         const key = recordId(tissue, pair.he);
+        const subjectLabel = tissue === "kidney_patient" ? "Patient " : "Patch ";
         const methods = {
           withAdapter: {
             label: "Generated PAS with adapter",
@@ -332,13 +367,20 @@
             filename: pair.pasWithoutAdapter,
             alt: "Generated PAS",
             rating: record.ratings?.withoutAdapter
+          },
+          patientPAS: {
+            label: "Generated PAS",
+            folder: "PAS_generated",
+            filename: pair.pasPatient,
+            alt: "Generated PAS",
+            rating: record.ratings?.patientPAS
           }
         };
         const method = methods[methodId];
         const pasPanel = '<div class="image-panel"><div class="image-label">Generated PAS</div>' +
           imagePicture(tissue, method.folder, method.filename, method.alt) +
           qualitySelector(tissue, pair.he, methodId, method.rating) + '</div>';
-        card.innerHTML = '<div class="patch-head"><span class="patch-title">Patch ' + displayNumber + ' : HE input</span></div><div class="patch-grid">' +
+        card.innerHTML = '<div class="patch-head"><span class="patch-title">' + subjectLabel + subjectNumber + ' : HE input</span></div><div class="patch-grid">' +
           '<div class="image-panel"><div class="image-label">HE input</div>' +
           imagePicture(tissue, "HE", pair.he, "HE input") + '</div>' + pasPanel + '</div>';
         return card;
@@ -347,13 +389,13 @@
         const map = new Map(records.map(record => [record.id, record]));
         return pairs.reduce((total, pair) => {
           const r = map.get(recordId(tissue, pair.he));
-          return total + PAS_METHODS.filter(method => r?.ratings?.[method] !== undefined && r.ratings[method] !== "").length;
+          return total + methodsForTissue(tissue).filter(method => r?.ratings?.[method] !== undefined && r.ratings[method] !== "").length;
         }, 0);
       }
       function renderSummaries(records, allPairs) {
         const map = new Map(records.map(record => [record.id, record]));
-        ["withAdapter", "fineTuned", "withoutAdapter"].forEach((model, index) => {
-          const table = $("#summary" + (index + 1));
+        [["withAdapter", 1], ["fineTuned", 2], ["withoutAdapter", 3], ["patientPAS", 4]].forEach(([model, tableIndex]) => {
+          const table = $("#summary" + tableIndex);
           const rows = Object.entries(tissues).map(([tissue, info]) => {
             const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
             let completed = 0;
@@ -388,7 +430,11 @@
         for (const tissue of Object.keys(tissues)) ensureTrialOrder(tissue, allPairs[tissue]);
         const pairs = allPairs[activeTissue];
         const pairByName = new Map(pairs.map(pair => [pair.he, pair]));
+        const subjectNumberByHE = new Map(pairs.map((pair, index) => [pair.he, index + 1]));
         const trials = trialOrders.get(activeTissue) || [];
+        $("#viewInstructions").textContent = activeTissue === "kidney_patient"
+          ? "Vue Patient : chaque patient apparaît une fois avec son image H&E et une seule sortie PAS. Ajoute jusqu’à 10 patients dans images/pairs.json sous kidney_patient."
+          : "Vue WSI : chaque patch H&E apparaît avec chacune des trois sorties PAS. Les 30 présentations sont mélangées et affichées sur cette page.";
         const pageCount = Math.max(1, Math.ceil(trials.length / PAGE_SIZE));
         currentPage = Math.min(currentPage, pageCount - 1);
         const start = currentPage * PAGE_SIZE;
@@ -401,7 +447,7 @@
           const pair = pairByName.get(trial.he);
           if (!pair) return;
           const record = byId.get(recordId(activeTissue, pair.he)) || { ratings: {} };
-          container.appendChild(renderPatchCard(activeTissue, pair, trial.method, start + index + 1, record));
+          container.appendChild(renderPatchCard(activeTissue, pair, trial.method, record, subjectNumberByHE.get(pair.he)));
         });
         $("#tissueTitle").textContent = tissues[activeTissue].name + " — " + tissues[activeTissue].dataset;
         $("#patchCount").textContent = trials.length + " présentations · " + countRatings(all, activeTissue, pairs) + "/" + trials.length + " évaluées";
@@ -412,40 +458,49 @@
         renderSummaries(all, allPairs);
       }
       async function exportData() {
+        if (typeof XLSX === "undefined") throw new Error("La bibliothèque Excel n’a pas pu être chargée.");
         const records = await getAllRecords();
         const map = new Map(records.map(record => [record.id, record]));
-        const rows = [["dataset", "tissue", "HE_filename", "PAS_with_adapter_filename", "PAS_finetuned_filename", "PAS_without_adapter_filename", "method", "quality_score", "quality_label"]];
-        for (const [tissue, info] of Object.entries(tissues)) {
-          const pairs = await loadPairs(tissue);
-          pairs.forEach(pair => ["withAdapter", "fineTuned", "withoutAdapter"].forEach(model => {
-            const score = map.get(recordId(tissue, pair.he))?.ratings?.[model] || "";
-            rows.push([info.dataset, info.name, pair.he, pair.pasWithAdapter, pair.pasFinetuned, pair.pasWithoutAdapter,
-              model === "withAdapter" ? "Generated PAS with adapter" : model === "fineTuned" ? "Generated PAS · His-MMDM fine-tuned" : "Generated PAS without adapter", score, qualityLabels[score] || ""]);
-          }));
-        }
-        const content = rows.map(row => row.map(value => '"' + String(value ?? "").replace(/"/g, '""') + '"').join(",")).join("\r\n");
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
-        link.download = "histodomain-evaluation.csv";
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        const header = ["Vue", "Base", "Niveau", "HE_filename", "PAS_filename", "Méthode", "Score", "Qualité"];
+        const wsiRows = [header];
+        const wsiPairs = await loadPairs("kidney");
+        wsiPairs.forEach(pair => PAS_METHODS.forEach(model => {
+          const score = map.get(recordId("kidney", pair.he))?.ratings?.[model] || "";
+          const pasFile = model === "withAdapter" ? pair.pasWithAdapter : model === "fineTuned" ? pair.pasFinetuned : pair.pasWithoutAdapter;
+          const methodName = model === "withAdapter" ? "Generated PAS with adapter" : model === "fineTuned" ? "Generated PAS fine-tuned" : "Generated PAS without adapter";
+          wsiRows.push(["Kidney WSI level", "KPMP Public Database", "WSI", pair.he, pasFile, methodName, score, qualityLabels[score] || ""]);
+        }));
+        const patientRows = [header];
+        const patientPairs = await loadPairs("kidney_patient");
+        patientPairs.forEach(pair => {
+          const score = map.get(recordId("kidney_patient", pair.he))?.ratings?.patientPAS || "";
+          patientRows.push(["Kidney Patient level", "KPMP Public Database", "Patient", pair.he, pair.pasPatient, "Single Generated PAS", score, qualityLabels[score] || ""]);
+        });
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(wsiRows), "Kidney WSI level");
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(patientRows), "Kidney Patient level");
+        XLSX.writeFile(workbook, "histodomain-evaluation-kpmp.xlsx");
       }
       async function resetRatings() {
         if (!confirm("Effacer toutes les notes ?")) return;
         const records = await getAllRecords();
-        for (const record of records) { record.ratings = { withAdapter: "", fineTuned: "", withoutAdapter: "" }; await saveRecord(record); }
+        for (const record of records) { record.ratings = { withAdapter: "", fineTuned: "", withoutAdapter: "", patientPAS: "" }; await saveRecord(record); }
         render();
       }
       $$(".tab[data-tissue]").forEach(button => button.addEventListener("click", () => {
         activeTissue = button.dataset.tissue;
         currentPage = 0;
+        largeScale = false;
+        $("#scaleToggle").classList.remove("active");
+        $("#scaleToggle").setAttribute("aria-pressed", "false");
+        ["#viewInstructions", ".list-head", ".pagination", "#patches", ".footer"].forEach(selector => { $(selector).hidden = false; });
         $$(".tab[data-tissue]").forEach(tab => tab.classList.toggle("active", tab === button));
         render().catch(showLoadError);
       }));
       $("#previousPage").addEventListener("click", () => { if (currentPage > 0) { currentPage--; render().catch(showLoadError); } });
       $("#nextPage").addEventListener("click", async () => {
         const pairs = await loadPairs(activeTissue);
-        if ((currentPage + 1) * PAGE_SIZE < pairs.length * PAS_METHODS.length) { currentPage++; render().catch(showLoadError); }
+        if ((currentPage + 1) * PAGE_SIZE < pairs.length * methodsForTissue(activeTissue).length) { currentPage++; render().catch(showLoadError); }
       });
       function showLoadError() {
         $("#patches").innerHTML = '<div class="empty">Impossible de charger images/pairs.json. Vérifie que le fichier est présent à la racine du dépôt publié par GitHub Pages.</div>';
@@ -454,9 +509,11 @@
         largeScale = !largeScale;
         $("#scaleToggle").classList.toggle("active", largeScale);
         $("#scaleToggle").setAttribute("aria-pressed", String(largeScale));
-        $("#patches").classList.toggle("scale-mode", largeScale);
+        ["#viewInstructions", ".list-head", ".pagination", "#patches", ".footer"].forEach(selector => {
+          $(selector).hidden = largeScale;
+        });
       });
-      $("#exportCsv").addEventListener("click", () => exportData().catch(showLoadError));
+      $("#exportCsv").addEventListener("click", () => exportData().catch(error => alert("Export Excel impossible : " + error.message)));
       $("#reset").addEventListener("click", resetRatings);
       render().catch(showLoadError);
     })();

@@ -62,5 +62,47 @@
     }
   ],
   "breast": [],
-  "lung": []
+  "lung": [],
+  "kidney_patient": [
+    {
+      "he": "P163-5.png",
+      "pasPatient": "PAS_P163-5.png"
+    },
+    {
+      "he": "P164-11.png",
+      "pasPatient": "PAS_P164-11.png"
+    },
+    {
+      "he": "P164-14.png",
+      "pasPatient": "PAS_P164-14.png"
+    },
+    {
+      "he": "P164-15.png",
+      "pasPatient": "PAS_P164-15.png"
+    },
+    {
+      "he": "P164-16.png",
+      "pasPatient": "PAS_P164-16.png"
+    },
+    {
+      "he": "P164-17.png",
+      "pasPatient": "PAS_P164-17.png"
+    },
+    {
+      "he": "P164-21.png",
+      "pasPatient": "PAS_P164-21.png"
+    },
+    {
+      "he": "P164-7.png",
+      "pasPatient": "PAS_P164-7.png"
+    },
+    {
+      "he": "P164-8.png",
+      "pasPatient": "PAS_P164-8.png"
+    },
+    {
+      "he": "P164-9.png",
+      "pasPatient": "PAS_P164-9.png"
+    }
+  ]
 }

@@ -170,9 +170,6 @@
     <div class="table-wrap"><table id="summary2"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
     <h2>Generated PAS without adapter</h2>
     <div class="table-wrap"><table id="summary3"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
-    <h2>Generated PAS — Patient level (single version)</h2>
-    <div class="table-wrap"><table id="summary4"><thead><tr><th>Tissu / base</th><th class="very">Very High</th><th class="high">High</th><th class="medium">Medium</th><th class="poor">Poor</th><th>Progression</th></tr></thead><tbody></tbody></table></div>
-
     <section class="dataset-bar" aria-label="Sélection de la base de données et du tissu">
       <div class="dataset-group">
         <div class="dataset-name">KPMP Public Database</div>
@@ -395,14 +392,18 @@
       }
       function renderSummaries(records, allPairs) {
         const map = new Map(records.map(record => [record.id, record]));
-        [["withAdapter", 1], ["fineTuned", 2], ["withoutAdapter", 3], ["patientPAS", 4]].forEach(([model, tableIndex]) => {
+        [["withAdapter", 1], ["fineTuned", 2], ["withoutAdapter", 3]].forEach(([model, tableIndex]) => {
           const table = $("#summary" + tableIndex);
-          const rows = Object.entries(tissues).map(([tissue, info]) => {
+          const summaryTissues = Object.entries(tissues).filter(([tissue]) =>
+            tissue !== "kidney_patient" || model === "withAdapter"
+          );
+          const rows = summaryTissues.map(([tissue, info]) => {
             const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
             let completed = 0;
             const pairs = allPairs[tissue] || [];
             pairs.forEach(pair => {
-              const value = Number(map.get(recordId(tissue, pair.he))?.ratings?.[model]);
+              const ratingKey = model === "withAdapter" && tissue === "kidney_patient" ? "patientPAS" : model;
+              const value = Number(map.get(recordId(tissue, pair.he))?.ratings?.[ratingKey]);
               if (value >= 1 && value <= 4) { counts[value]++; completed++; }
             });
             return '<tr><td>' + escapeHtml(info.name + " · " + info.dataset) + '</td>' +

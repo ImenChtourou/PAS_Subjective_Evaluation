@@ -428,10 +428,7 @@
         const pairs = allPairs[activeTissue];
         const pairByName = new Map(pairs.map(pair => [pair.he, pair]));
         const subjectNumberByHE = new Map(pairs.map((pair, index) => [pair.he, index + 1]));
-        const trials = trialOrders.get(activeTissue) || [];
-        $("#viewInstructions").textContent = activeTissue === "kidney_patient"
-          ? "Patient view: each patient appears once with its H&E image and one PAS output. Add up to 10 patients to the kidney_patient list in images/pairs.json."
-          : "WSI view: each H&E patch appears with each of the three PAS outputs. All 30 presentations are shuffled and displayed on this page.";
+        const trials = trialOrders.get(activeTissue) || [];        
         const pageCount = Math.max(1, Math.ceil(trials.length / PAGE_SIZE));
         currentPage = Math.min(currentPage, pageCount - 1);
         const start = currentPage * PAGE_SIZE;

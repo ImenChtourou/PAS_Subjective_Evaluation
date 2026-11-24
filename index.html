@@ -274,6 +274,12 @@
       function ensureTrialOrder(tissue, pairs) {
         const storageKey = "histodomain-trial-order-v3:" + tissue;
         const tissueMethods = methodsForTissue(tissue);
+        if (tissue === "kidney_patient") {
+          const patientTrials = pairs.map(pair => ({ he: pair.he, method: "patientPAS" }));
+          try { localStorage.setItem(storageKey, JSON.stringify(patientTrials)); } catch (_) {}
+          trialOrders.set(tissue, patientTrials);
+          return;
+        }
         let saved = {};
         try { saved = JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (_) { saved = []; }
         const expected = new Set(pairs.flatMap(pair => tissueMethods.map(method => pair.he + "|" + method)));
